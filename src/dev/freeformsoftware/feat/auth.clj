@@ -27,7 +27,6 @@
 
 (defn send-link!
   [req discord-userid url]
-  (println "dsuid" discord-userid ((:biff/secret req) ::auth.discord-send/token))
   (and (human? req)
        (auth.discord-send/send-message-to!
         ((:biff/secret req) ::auth.discord-send/token)

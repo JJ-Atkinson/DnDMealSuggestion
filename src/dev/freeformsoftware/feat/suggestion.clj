@@ -1,11 +1,14 @@
 (ns dev.freeformsoftware.feat.suggestion
   (:require
+   [clojure.string :as str]
    [com.biffweb :as biff]
    [dev.freeformsoftware.feat.common.html-fragments :as frag]
+   [dev.freeformsoftware.feat.image-search :as feat.image-search]
    [com.wsscode.transito :as transito]
    [jsonista.core :as json]
    [dev.freeformsoftware.middleware :as mid]
-   [xtdb.api :as xt]))
+   [xtdb.api :as xt])
+  (:import (java.util UUID)))
 
 (def td :td.border-2.border-slate-900.p-2)
 (def th :th.border-2.border-slate-900.p-2)
@@ -18,7 +21,8 @@
    [th "Author"]
    [th "Votes"]
    [th "Food Type"]
-   [th "Image"]])
+   [th "Image"]
+   [th "Actions"]])
 
 (def suggestion-pull
   ['*
@@ -35,17 +39,15 @@
         new-voted-for-by (if self-voted-for-suggestion?
                            (disj (set voted-for-by-ids) (:xt/id user))
                            (conj (set voted-for-by-ids) (:xt/id user)))
-        hx-props (fn [new-props] {:hx-post (str "/app/suggestion/" (.toString id) "/merge")
+        hx-props (fn [new-props] {:hx-post (str "/app/suggestion/merge/" (.toString id))
                                   :hx-target "closest tr"
                                   :hx-swap "outerHTML"
                                   :hx-vals (json/write-value-as-string {:clj (transito/write-str new-props)})})]
-    (println (pr-str [
-                      (disj (set voted-for-by-ids) id)
-                      (conj (set voted-for-by-ids) id)]))
     [:tr
-     [td [:input (merge (hx-props {:suggestion/tried-before? (not tried-before?)})
-                        {:type "checkbox"
-                         :checked tried-before?})]]
+     [td {:class '[text-center]}
+      [:input (merge (hx-props {:suggestion/tried-before? (not tried-before?)})
+                     {:type "checkbox"
+                      :checked tried-before?})]]
      [td [:span name]]
      [td [:span notes]]
      [td [:span (:user/name author)]]
@@ -63,7 +65,11 @@
      [td [:span (get {:food-type/meal "Meal"
                       :food-type/snack "Snack"}
                      food-type)]]
-     [td [:span image-url]]]))
+     [td [:img.w-32 {:src image-url :alt "Can't load"}]]
+     [td {:class '[text-right]}
+      [:button.cursor-pointer.text-white.bg-slate-500.hover:bg-red-300.hover:text-black.py-1.px-3.text-center
+       {:hx-delete (str "/app/suggestion/delete/" (.toString id))}
+       "X"]]]))
 
 (defn items-for-list
   [{:keys [biff/db]} list-id]
@@ -114,7 +120,7 @@
                          :type "text"
                          :class frag/input-classes})]
       [:.col-span-1
-       ]
+       (feat.image-search/form-input-frag nil)]
       [:.col-span-1
        (frag/form-input {:id "notes"
                          :label "Notes"
@@ -150,6 +156,7 @@
     :keys [session biff/db params] :as req}]
   (let [user (xt/entity db (:uid session))
         list (biff/lookup db :list/name list-name)]
+    (assert (not (str/blank? name)))
     (biff/submit-tx req
                     [{:db/doc-type :suggestion
                       :db/op :upsert
@@ -161,13 +168,13 @@
                       :suggestion/added-at :db/now
                       :suggestion/food-type (read-string food-type)
                       :suggestion/list (:xt/id list)
-                      :suggestion/image-url "DBIMAGE"}])
+                      :suggestion/image-url image-url}])
     {:status 200
      :headers {"HX-Refresh" "true"}}))
 
 (defn post-merge-suggestion
   [{:keys [params biff/db session biff.xtdb/node] {:keys [suggestion-id]} :path-params :as req}]
-  (let [id (java.util.UUID/fromString suggestion-id)
+  (let [id (UUID/fromString suggestion-id)
         user (xt/entity db (:uid session))]
     (biff/submit-tx req
                     [(merge {:db/doc-type :suggestion
@@ -176,8 +183,19 @@
                             (transito/read-str (:clj params)))])
     (tr-list-item-fragment user (xt/pull (xt/db node) suggestion-pull id))))
 
+(defn delete-suggestion
+  [{{:keys [suggestion-id]} :path-params :as req}]
+  (let [id (UUID/fromString suggestion-id)]
+    (biff/submit-tx req
+                    [{:db/doc-type :suggestion
+                      :db/op :delete
+                      :xt/id id}])
+    {:status 200
+     :headers {"HX-Refresh" "true"}}))
+
 (def features
   {:routes ["/app" {:middleware [mid/wrap-signed-in]}
             ["/new-suggestion/:list-name" {:post post-new-suggestion
                                            :get new-suggestion-fragment}]
-            ["/suggestion/:suggestion-id/merge" {:post post-merge-suggestion}]]})
+            ["/suggestion/merge/:suggestion-id" {:post post-merge-suggestion}]
+            ["/suggestion/delete/:suggestion-id" {:delete delete-suggestion}]]})

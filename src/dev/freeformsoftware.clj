@@ -8,6 +8,7 @@
    [dev.freeformsoftware.schema :refer [malli-opts]]
    [dev.freeformsoftware.feat.list :as list]
    [dev.freeformsoftware.feat.suggestion :as suggestion]
+   [dev.freeformsoftware.feat.image-search :as image-search]
    [clojure.test :as test]
    [clojure.tools.logging :as log]
    [nrepl.cmdline :as nrepl-cmd]))
@@ -18,7 +19,8 @@
    home/features
    list/features
    worker/features
-   suggestion/features])
+   suggestion/features
+   image-search/features])
 
 (def routes [["" {:middleware [biff/wrap-site-defaults]}
               (keep :routes features)]
